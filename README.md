@@ -2,9 +2,13 @@
 
 * [Background](#Background)
 * [Power extraction](#Power)
+  * [First thoughts and planning](#Intro)
+  * [Sensors](#Sensors)
+  * [Fast Fourier Transform](#FFT)
+  * [Filtering and results](#Filtering)
 * [GUI and interface](#GUI)
 
-### Background
+## Background
 
 This project is to design and test a wave energy converter that will use the motion of waves in the ocean to produce electrical energy. Ocean waves are a huge and largely untapped renewable energy source – wave energy could provide an estimated easily exploitable 500 gigawatts according to [CorPower](http://corpowerocean.com/a-short-history-of-wave-energy/) – and a major advantage of wave energy is that it is not dependent on weather conditions or time of day. Energy sources such as solar power and wind energy rely on variable conditions; solar depends on availability of sunlight, and wind depends on whether and how fast the wind is blowing. In contrast, in many coastal environments waves are constant throughout the day and night, meaning that power can be constantly generated and does not have to be stored to be distributed as much as other renewable energy forms. Wave energy thus has the capacity to provide a stable, reliable source of energy at scale. 
 
@@ -18,7 +22,22 @@ Building on the work done by The Vortical Flow Research Laboratory, this project
 My role in this project has been to run tests, conduct analysis of the data collected, and to add functionality to the device. By adding sensors and writing code, I have been able to calculate and display the instantaneous power output that the device is producing. Through lab tests, I have helped to characterize the linear damper to get an exact relationship between the current to the electromagnets and the damping ratio, and have verified that the code I have worked on functions in lab scenarios. Furthermore, I have integrated my work with the Graphical User Interface (GUI) to better communicate the results. 
 
 
-### Power
+## Power
+
+### Intro
+To calculate the insantaneous power produced by the device, the motion caused by various signals must be added up. For each signal *j*, the power corresponding to each complex amplitude *X<sub>j</sub>* is given by 
+``` math
+ P_{j}(\omega) = \frac{1}{2}\omega^{2}b_{PTO}|X_{j}|^{2}
+```
+So, in order to find the instantaneous power, the complex amplitude (*X<sub>j</sub>* and frequency of the signal (*&omega;*), as well as the damping ratio of the system (*b<sub>PTO</sub>*), must be found. The damping ratio of the system, *b<sub>PTO</sub>*, is, in our case, related to the current being passed to the electromagnets by a constitutive relationship. Thus it remains to find the amplitude and frequency of the signal. 
+
+These quantities
+
+### Sensors
+
+### FFT
+
+### Filtering
 
 
-### GUI
+## GUI
