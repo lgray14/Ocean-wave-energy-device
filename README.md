@@ -145,7 +145,7 @@ void loop() {
 
     Serial.print(distMeasured);
     Serial.print(' ');
-    // UNCOMMENT THE FOLLOWING IF GUI NOT WORKING - CURRENT WILL APPEAR INSTEAD OF FORCE
+    // SPACER FOR GUI READINGS
     Serial.print(0);
     Serial.print(' ');
     // 
@@ -157,6 +157,140 @@ void loop() {
 ```
 
 ### FFT
+
+With the sensors attached and the position in particular readable from the Arduino, I turned my attention to extracting the amplitude and frequency from the signal. My first step was actually a pretty signficant misstep -- I assumed the amplitude would be pretty variable so I opted for a version of the fast Fourier transform (FFT) called a Hilbert-Huang transform. The Hilbert transform is great at extracting the instantaneous amplitude and amplitude envelope, and at being very accurate with a smaller data set, but lacks in the frequency extraction. It's much better at finding the natural frequency of the decaying system, and doesn't do a great job with a consistent forcing frequency. After realizing this, I switched over to a traditional FFT model. 
+
+The fast Fourier transform takes a set of data points and extracts the amplitude and frequency of the sinusoid it can recognize in that data. For this reason it works best with a couple oscillations. 
+
+**FFT enabling functions**
+```python
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.signal import find_peaks
+from numpy.fft import fft, fftfreq
+from scipy.signal import windows, find_peaks
+
+def quadratic_peak_interpolation(amps, freqs, idx):
+    """
+    Refine peak frequency and amplitude using quadratic interpolation.
+
+    Parameters:
+        amps (ndarray): FFT amplitude spectrum
+        freqs (ndarray): Corresponding frequency bins
+        idx (int): Index of the peak
+
+    Returns:
+        freq_peak (float): Interpolated frequency
+        amp_peak (float): Interpolated amplitude
+        p (float): Offset in bins from center
+    """
+    p = 0.5 * (amps[idx - 1] - amps[idx + 1]) / (amps[idx - 1] - 2*amps[idx] + amps[idx + 1])
+    freq_peak = freqs[idx] + p*(freqs[1] - freqs[0])
+    amp_peak = amps[idx] - 0.25*(amps[idx - 1] - amps[idx + 1])*p
+    return freq_peak, amp_peak
+
+def extracter(x, t, k):
+    """
+    Extract k peak ampliudes and their corresponding frequencies using zero-padded fast Fourier transform.
+
+    Parameters:
+        x: original displacement signal
+        t: corresponding time data
+        k: number of peak frequencies to be identified
+
+    Returns:
+        peak_amps: identified peak amplitudes, list of length k
+        peak_freqs: corresponding frequencies
+    """
+
+    n = len(t)
+    window = windows.hann(n)
+    y_windowed = x*window
+
+    # Zero-padding
+    zero_pad_factor = 8
+    n_padded = n*zero_pad_factor
+
+    # do fft on zero-padded data
+    fft_vals = fft(y_windowed, n=n_padded)
+    freqs_raw = fftfreq(n_padded, d=t[1] - t[0])
+    # take the second half/valid data
+    freqs = freqs_raw[:n_padded//2]
+    amps = np.abs(fft_vals[:n_padded//2]) / (np.sum(window)/2)
+
+    # find peaks to analyze around
+    peaks, _ = find_peaks(amps)
+    peak_freqs = []
+    peak_amps = []
+
+    combined_lists = list(zip(amps[peaks], freqs[peaks], peaks))
+    sorted_lists = sorted(combined_lists, key=lambda x: x[0]) # sort frequencies and amplitudes AND peak indices based on amplitude
+
+    # 1. list sorts by amplitude from smallest to largest
+    # 2. the peak will always be the third item in the row
+    # therefore, the index of the largest peak should be sorted_lists[-1][2]
+    # ==> to index in for loop, next to add 1 to i to correct for zero and should be the same -- sorted_lists[-(i+1)][2]
+    # i rows from the bottom, third entry in row
+
+    for i in range(k):
+    # Perform quadratic interpolation
+        freq_peak, amp_peak = quadratic_peak_interpolation(amps, freqs, sorted_lists[-(i+1)][2]) # get the peak index for the 
+        peak_freqs.append(freq_peak)
+        peak_amps.append(amp_peak)
+    
+    return peak_amps, peak_freqs
+```
+
+**Final FFT example**
+```python
+import numpy as np
+from fft_funcs import extracter
+import matplotlib.pyplot as plt
+
+# ~~~~~~ Generate fake signal ~~~~~~
+sr = 10 #Hz -- sampling rate
+# sampling interval
+ts = 1.0/sr # timestamp
+time_range = 10
+t = np.arange(0,time_range,ts)
+
+signals = 2
+x = 0
+real_power = 0
+for i in range(signals):
+    frequency = round(2*np.random.rand(), 3)
+    amp = round(np.random.rand(), 4)
+    x += amp*np.sin(2*np.pi*frequency*t)
+    print("Freq %s:" %i, frequency, "Amp %s:" %i, amp)
+    real_power += 1/2*((frequency*2*np.pi)**2)*(amp**2)
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+num_peaks = 1
+amplitudes, frequencies = extracter(x, t, num_peaks) # pass signal, corresponding times, number of peaks to identify
+
+print(f"Detected frequency: {np.round(frequencies, 4)} Hz")
+print(f"Peak amplitude: {np.round(amplitudes, 4)} m")
+
+
+# ---- PLOT ----
+plt.plot(t, x, label='Original Signal')
+# Reconstruct signal using interpolated values
+reconstructed = 0
+model = np.zeros(len(t))
+modelled_power = 0
+for i in range(len(frequencies)):
+    reconstructed += amplitudes[i]*np.sin(float(2*np.pi*frequencies[i])*np.array(t))
+    modelled_power += 1/2*((frequencies[i]*2*np.pi)**2)*(amplitudes[i]**2)*(4)
+plt.plot(t, reconstructed, 'r--', label='Reconstructed from peak amplitude and frequency')
+plt.text(4.5, 0, f'Power: {round(modelled_power, 2)}W', color='black', bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.5'))
+plt.title('Signal Reconstruction Using Interpolated Peak')
+plt.xlabel('Time (s)')
+plt.ylabel('Displacement (m)')
+plt.legend()
+
+# plt.tight_layout()
+plt.show()
+```
 
 ### Filtering
 
