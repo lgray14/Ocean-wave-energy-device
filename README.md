@@ -83,6 +83,10 @@ The other sensor that I equipped the system with was a Hall Effect sensor, which
 
 The INA sensor has also worked pretty well, however it is not quite linear -- it reads slightly too high at low currents and slightly too low at higher currents. However, for our purposes again, this has not been a huge deal but it's not the absolute most accurate. In the long term, having a Hall Effect could be made obsolete by having a tuneable power source. The current DC power supply we have to the electromagnets has to be controlled by turning knobs, but there are fancier to have one that can be controlled from a computer or by a program. Having the ability to tune the current and therefore the damping coefficient could be very useful -- it would make it possible to match specific frequencies with damping coefficients in order to maximize power output.
 
+<img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/damper.jpg" height="300">
+
+<sup> *Damper system* </sup>
+
 The following is the Arduino code for the ToF and Hall Effect sensors, as well as the force probe the system was already equipped with.
 
 ```C++
