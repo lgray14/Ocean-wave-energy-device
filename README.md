@@ -162,9 +162,11 @@ void loop() {
 
 ### FFT
 
-With the sensors attached and the position in particular readable from the Arduino, I turned my attention to extracting the amplitude and frequency from the signal. My first step was actually a pretty signficant misstep -- I assumed the amplitude would be pretty variable so I opted for a version of the fast Fourier transform (FFT) called a Hilbert-Huang transform. The Hilbert transform is great at extracting the instantaneous amplitude and amplitude envelope, and at being very accurate with a smaller data set, but lacks in the frequency extraction. It's much better at finding the natural frequency of the decaying system, and doesn't do a great job with a consistent forcing frequency. After realizing this, I switched over to a traditional FFT model. 
+With the sensors attached and the position in particular readable from the Arduino, I turned my attention to extracting the amplitude and frequency from the signal. My first step was actually a pretty signficant misstep -- I assumed the amplitude would be pretty variable so I opted for a version of the fast Fourier transform (FFT) called a Hilbert-Huang transform. The Hilbert transform is great at extracting the instantaneous amplitude and amplitude envelope, and at being very accurate with a smaller data set, but lacks in the frequency extraction. It's much better at finding the natural frequency of the decaying system, and doesn't do a great job with a consistent forcing frequency. After realizing this, I switched over to a traditional FFT model. FFT does a great job with a consistent frequency and amplitude, which is ideal for the consistent signals we are working with.
 
-The fast Fourier transform takes a set of data points and extracts the amplitude and frequency of the sinusoid it can recognize in that data. For this reason it works best with a couple oscillations. 
+The fast Fourier transform takes a set of data points and extracts the amplitude and frequency of the sinusoid it can recognize in that data. For this reason it works best with a couple oscillations. By trying a couple different time intervals/data set lengths, it seems like at the low frequencies that the wave tank usually entails that about ten seconds worth of data, at around 100 points, is ideal. The next problem that comes up from this is how to have a moving data set of 100 points. The power should be live and change with the signal, so the last ten seconds worth of data should be the ones being evaluated. By storing the data and taking the last 100 points, this can be achieved.
+
+The next issue I dealt with was low sampling frequency. The ToF sensor has a pretty high sampling frequency but unless I made the FFT time interval much longer, the resolution for the detectable frequencies was too low. With the setup I had, the most accuracy I could get was .1 Hz, which isn't terrible, but even small variations in the frequency of the incoming waves make large differences in the output of the device. In order to resolve this, I used zero-padding and windowing. I used Hann windowing specifically, which smooths the data and helps the algorithm find the peaks that the data might not quite show. At first, I tried various types of interpolation, and then zero-padding on its own, but I got by far the best results by using windowing and zero-padding together. These are included in the "extracter" function shown below. After that, I also use a quadratic interpolation to further smooth and identiify the peaks. This is potentially a little overkill but the results are very consistent and it doesn't take an enormous amount of time. 
 
 **FFT enabling functions**
 ```python
@@ -244,6 +246,8 @@ def extracter(x, t, k):
     
     return peak_amps, peak_freqs
 ```
+
+Lastly, the final major hurdle was dealing with layered signals.
 
 **Final FFT example**
 ```python
