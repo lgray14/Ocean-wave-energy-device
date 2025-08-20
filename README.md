@@ -39,7 +39,8 @@ Both of these quantities can be found from the position data. A fast Fourier tra
 
 
 ### Sensors
-To get the position data, a position sensor must be equipped with the device. The device previously had a distance sensor that worked by turning as the buoy bobbed up and down -- the contact with the frame made it turn and the number of turns corresponded to the distance travelled. However, this sensor added a lot of friction to the system and we decided it was better to use a [time of flight (ToF) sensor](https://www.adafruit.com/product/3317). The VL53L0X ToF sensor seemed like a good choice, since the range need was fairly short and the accuracy need pretty high, and the sensor itself is small and lightweight. The sensor can take readings at different frequencies, so it needed to be tuned to take as many readings as possible in a certain band of accuracy. After some trial, the following code represents the best balance between speed of readings and accuracy:
+
+To get the position data, a position sensor must be equipped with the device. The device previously had a distance sensor that worked by turning as the buoy bobbed up and down -- the contact with the frame made it turn and the number of turns corresponded to the distance travelled. However, this sensor added a lot of friction to the system and we decided it was better to use a [time of flight (ToF) sensor](https://www.adafruit.com/product/3317). The VL53L0X ToF sensor seemed like a good choice, since the range need was fairly short and the accuracy need pretty high, and the sensor itself is small and lightweight. The sensor can take readings at different frequencies, so it needed to be tuned to take as many readings as possible in a certain band of accuracy. After some trial, the following Arduino code represents the best balance between speed of readings and accuracy:
 ```C++
 // HIGH ACCURACY VL53L0X CODE
 
@@ -72,10 +73,88 @@ void loop() {
 }
 ```
 
+The VL530X has been working pretty well, however it is definitely not as accurate as the turning position sensor. However, the friction improvement can be seen very clearly in testing. The friction was decreasing the amplitude of the device's oscillations significantly and was noticeably affecting the damping ratio curve. In particular, the friction was acting as damping of its own and in the free decay tests was creating an undesireable offset in the relationship between current and damping. The ToF sensor is a huge improvement in this area but it definitely has some noticeable noise, in the range of a couple millimeters. It doesn't seem to majorly affect data readings so far, especially given the size of the data sets needed for the FFT process, but this could possibly use some more looking into, and in the future maybe a more precise sensor. 
+
 I placed the sensor on the frame of the wave device to be able to measure the distance to the moving buoy. Having the sensor fixed instead of moving with the system made the wiring less complicated and more secure.
 
 <img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/wiring1.jpg" height="300"> <img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/wiring2.jpg" height="300">
 
+The other sensor that I equipped the system with was a Hall Effect sensor, which measures the current being passed to the electromagnets. There is a direct relationship between the current to the electromagnets and the damping ratio because of Lenz's law -- when the magnets are on, eddy currents are generated in the copper plate, leading to a damping effect. It's important to know the current to the magnets for this reason, and the damping ratio goes into the power. The Hall Effect sensor that we chose was the [INA219](https://www.adafruit.com/product/904) because its range of currents was comparable to the testing conditions and for it's lightness and accuracy. 
+
+The INA sensor has also worked pretty well, however it is not quite linear -- it reads slightly too high at low currents and slightly too low at higher currents. However, for our purposes again, this has not been a huge deal but it's not the absolute most accurate. In the long term, having a Hall Effect could be made obsolete by having a tuneable power source. The current DC power supply we have to the electromagnets has to be controlled by turning knobs, but there are fancier to have one that can be controlled from a computer or by a program. Having the ability to tune the current and therefore the damping coefficient could be very useful -- it would make it possible to match specific frequencies with damping coefficients in order to maximize power output.
+
+The following is the Arduino code for the ToF and Hall Effect sensors, as well as the force probe the system was already equipped with.
+
+```C++
+#include "HX711.h"
+#include <Wire.h>
+#include <Adafruit_INA219.h>
+#include <Adafruit_VL53L0X.h>
+#include <Simpletimer.h>
+
+//hall effect sensor
+Adafruit_INA219 ina219;
+// ToF sensor
+Adafruit_VL53L0X lox = Adafruit_VL53L0X();
+// timer
+Simpletimer timer1{};
+// Load Cell Amp -- force readings
+#define calibration_factor 1250.0 //  This value is obtained using the SparkFun_HX711_Calibration sketch
+#define DOUT  3
+#define CLK  2
+HX711 scale;
+
+
+void setup() {
+  // initialize serial communication at 9600 bits per second:
+  Serial.begin(115200);
+
+  // initialize load cell amp
+  scale.begin(DOUT, CLK);
+  scale.set_scale(calibration_factor); //This value is obtained by using the SparkFun_HX711_Calibration sketch
+  scale.tare(); //Assuming there is no weight on the scale at start up, reset the scale to 0
+  
+  // initialize Hall Effect sensor
+  ina219.begin();
+  
+  // set up ToF sensor
+  if (!lox.begin()) {
+    Serial.println(F("Failed to boot VL53L0X"));
+    while(1);
+  }
+  lox.setMeasurementTimingBudgetMicroSeconds(100000); // from testing, this value results in a good balance between noise and sampling rate
+}
+
+// set sampling rate -- should not change
+float sampling_rate = 10; //Hz
+float gap = (1/sampling_rate)*1000;
+
+void loop() {
+  // ToF sensor
+  VL53L0X_RangingMeasurementData_t measure;
+  lox.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
+
+  if (timer1.timer(gap)) { // take samples at specified rate
+    int distMeasured = 0;
+    if (measure.RangeStatus != 4) {  // phase failures have incorrect data
+      distMeasured = measure.RangeMilliMeter;
+    }
+    // Hall effect sensor
+    float current_mA = 0;
+    current_mA = ina219.getCurrent_mA();
+
+    Serial.print(distMeasured);
+    Serial.print(' ');
+    // UNCOMMENT THE FOLLOWING IF GUI NOT WORKING - CURRENT WILL APPEAR INSTEAD OF FORCE
+    Serial.print(0);
+    Serial.print(' ');
+    // 
+    Serial.print(current_mA, 2); // current returns a float ==> GUI does not cope well, resolve
+    Serial.print(' ');
+    Serial.println(scale.get_units(), 2); //force scale.get_units() returns a float
+  }
+}
+```
 
 ### FFT
 
