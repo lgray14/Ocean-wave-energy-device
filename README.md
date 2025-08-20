@@ -33,9 +33,9 @@ So, in order to find the instantaneous power, the complex amplitude (*X<sub>j</s
 
 Both of these quantities can be found from the position data. A fast Fourier transform (FFT) can be applied to the sinusoidally varying position data to reconstruct from the data points a sinusoidal equation, in particular the amplitude and the frequency. FFTs can also capture the phase but this is not relevant for this data set. 
 
-<img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/buoy.jpg" height="300">
+<img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/sinusoid.png" height="300">
 
-<sup> *When the bucket moves in the tank, its position varies sinusoidally as shown here* </sup>
+<sup> *When the bucket moves in the tank, its position varies sinusoidally as shown here on the left hand graph* </sup>
 
 
 ### Sensors
@@ -74,7 +74,7 @@ void loop() {
 
 I placed the sensor on the frame of the wave device to be able to measure the distance to the moving buoy. Having the sensor fixed instead of moving with the system made the wiring less complicated and more secure.
 
-<img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/buoy.jpg" height="300">
+<img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/wiring1.jpg" height="300"> <img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/wiring2.jpg" height="300">
 
 
 ### FFT
