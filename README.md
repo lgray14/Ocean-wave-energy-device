@@ -306,5 +306,8 @@ plt.legend()
 plt.show()
 ```
 
+**Result of this code with two signals**
+
+<img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/2signal.png" height="500">
 
 ## GUI
