@@ -1,0 +1,14 @@
+[sensor.pot1]
+# Now using time-of-flight linear sensor
+unit = 'cm'
+scaling_factor = 100.0  # mm reading
+
+[sensor.pot2]
+
+diameter = 4.3  # in cm
+unit = 'cm'
+max_turns = 10
+
+[sensor.force]
+unit = 'A'
+scaling_factor = 1
