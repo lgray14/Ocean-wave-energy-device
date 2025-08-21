@@ -247,9 +247,11 @@ def extracter(x, t, k):
     return peak_amps, peak_freqs
 ```
 
+### Filtering
+
 Lastly, the final major hurdle was dealing with layered signals. For the purposes of the wave tank, identifying the most dominant signal is the priority, but I wanted to include functionality to expand a little bit how many peaks can be identified. The "extracter" function is arranged to take *k* as an input -- the function will return the *k* largest peaks. This is shown in the image below on the left, where the data contains two signals but the result filters to the most dominant one. Since this was not a top priority it's not super robust, so you do have to identify a number of peaks to seek out by entering a value *k*. Additionally, the windowing method does lead to 'echo peaks' (not sure if there is a technical term for this) where around the actual peak there are several short rebound peaks that can pop up. This effect can be seen in the image below on the right for a two-signal data set -- there are two real peaks, but around the base of the taller one there are a couple little bumps. As of yet I have not figured out how to get the peak finder to ignore these as they cannot be distinguished from the real peaks except by their proximity to one and that they are symmetric about a larger one. Again this was a lower priority and can be improved in the future. Another future project that would improve the effectiveness of the program would be to auomatically identify all the major peaks instead of having to enter a value *k* for how many peaks to look for.
 
-<img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/damper.jpg" height="300"> <img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/damper.jpg" height="300">
+<img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/2signal_fft.png" height="300"> <img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/fft_echos.png" height="300">
 
 The following is an example of how the functions can be implemented to analyze a fake signal. 
 
@@ -303,8 +305,6 @@ plt.legend()
 # plt.tight_layout()
 plt.show()
 ```
-
-### Filtering
 
 
 ## GUI
