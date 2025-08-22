@@ -253,61 +253,69 @@ Lastly, the final major hurdle was dealing with layered signals. For the purpose
 
 <img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/2signal_fft.png" height="300"> <img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/fft_echos.png" height="300">
 
-The following is an example of how the functions can be implemented to analyze a fake signal. 
+The following is an example of how the functions can be implemented to analyze a live signal. 
 
 **Final FFT example**
 ```python
-import numpy as np
-from fft_funcs import extracter
+import serial
+from time import time
 import matplotlib.pyplot as plt
+import numpy as np
+from scipy.signal import find_peaks
+from numpy.fft import fft, fftfreq
+from scipy.signal import windows, find_peaks
+from fft_funcs import extracter
 
-# ~~~~~~ Generate fake signal ~~~~~~
-sr = 10 #Hz -- sampling rate
-# sampling interval
-ts = 1.0/sr # timestamp
-time_range = 10
-t = np.arange(0,time_range,ts)
+ser = serial.Serial('COM7', baudrate=115200)
+print(ser.name)
 
-signals = 2
-x = 0
-real_power = 0
-for i in range(signals):
-    frequency = round(2*np.random.rand(), 3)
-    amp = round(np.random.rand(), 4)
-    x += amp*np.sin(2*np.pi*frequency*t)
-    print("Freq %s:" %i, frequency, "Amp %s:" %i, amp)
-    real_power += 1/2*((frequency*2*np.pi)**2)*(amp**2)
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+x = []
+t = []
+I = []
 
-num_peaks = 1
-amplitudes, frequencies = extracter(x, t, num_peaks) # pass signal, corresponding times, number of peaks to identify
+num_peaks = 2
+times = 0
 
-print(f"Detected frequency: {np.round(frequencies, 4)} Hz")
-print(f"Peak amplitude: {np.round(amplitudes, 4)} m")
+ser.readline() # read and do nothing with first line
+start = time()
+while True:
+    line = ser.readline().decode('utf-8').strip()  # Read a line and decode it
+    print(line)
+    if not line:  # Stop if no data is received
+        break
 
+    x.append(float(line.split()[0])/1000) # convert mm to m
+    t.append((time() - start))
+    I.append(float(line.split()[2])/1000) # convert from mA to A
+    # print(x)
+    # print(len(x))
+    # print(len(x)%10)
+    if len(x) >= 100 and len(x)%10 == 0:
+        x100 = x[-100:]
+        t100 = t[-100:]
+        current = np.mean(I[-100:])
+        
+        # print(np.round(x100, 3), len(x100))
+        # print(np.round(t100, 3), len(t100))
+        # print(current)
 
-# ---- PLOT ----
-plt.plot(t, x, label='Original Signal')
-# Reconstruct signal using interpolated values
-reconstructed = 0
-model = np.zeros(len(t))
-modelled_power = 0
-for i in range(len(frequencies)):
-    reconstructed += amplitudes[i]*np.sin(float(2*np.pi*frequencies[i])*np.array(t))
-    modelled_power += 1/2*((frequencies[i]*2*np.pi)**2)*(amplitudes[i]**2)*(4)
-plt.plot(t, reconstructed, 'r--', label='Reconstructed from peak amplitude and frequency')
-plt.text(4.5, 0, f'Power: {round(modelled_power, 2)}W', color='black', bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.5'))
-plt.title('Signal Reconstruction Using Interpolated Peak')
-plt.xlabel('Time (s)')
-plt.ylabel('Displacement (m)')
-plt.legend()
-
-# plt.tight_layout()
-plt.show()
+        amplitudes, frequencies = extracter(x100, t100, num_peaks)
+        # ⇓ replace with constitutive relationship between damping and current ⇓
+        damping = 1.5*(current**2)
+        # ⇑--------------------------------------------------------------------⇑
+        power = 0
+        for i in range(len(amplitudes)):
+            power += (1/2)*damping*(amplitudes[i]**2)*((frequencies[i]*2*np.pi)**2)
+        print(f"\nPower: {round(power, 4)}W")
+        print(f"Peaks: amplitude of {np.round(amplitudes, 4)}m and frequency of {np.round(frequencies, 4)}Hz; Mean current: {current}A\n")
 ```
 
 **Result of this code with two signals**
 
 <img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/2signal.png" height="500">
 
+
+
 ## GUI
+
+After finishing the power extraction code, the next step was to integrate it with the existing graphical user interface (GUI) which plots the position of the buoy live. Initially, it plotted the live position and force reading from the force probe. My goal was to add the current to be plotted and the calculated power. Plotting the current turned out to be relatively trivial, since the current is read straight to the Arduino and can be passed directly to the GUI. I replaced the force reading with the current and just changed all of the labels to say current instead of force and all the appropriate units. At some point it would probably be useful to add the force probe functionality back to the Arduino readings and the GUI. From there the only major task was to add the power calculation functionality and have it plot. 
