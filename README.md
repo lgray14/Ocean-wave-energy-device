@@ -7,6 +7,7 @@
   * [Fast Fourier Transform](#FFT)
   * [Filtering and results](#Filtering)
 * [GUI and interface](#GUI)
+* [Final thoughts](#Final)
 
 ## Background
 
@@ -312,10 +313,144 @@ while True:
 
 **Result of this code with two signals**
 
-<img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/2signal.png" height="500">
-
+<img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/power_ex.gif" height="500">
 
 
 ## GUI
 
 After finishing the power extraction code, the next step was to integrate it with the existing graphical user interface (GUI) which plots the position of the buoy live. Initially, it plotted the live position and force reading from the force probe. My goal was to add the current to be plotted and the calculated power. Plotting the current turned out to be relatively trivial, since the current is read straight to the Arduino and can be passed directly to the GUI. I replaced the force reading with the current and just changed all of the labels to say current instead of force and all the appropriate units. At some point it would probably be useful to add the force probe functionality back to the Arduino readings and the GUI. From there the only major task was to add the power calculation functionality and have it plot. 
+
+This proved to be fairly complex. I added in the FFT calculation functions, using Claude AI to help me sort through the GUI because I don't have a lot of experience reading functions and coding user interfaces -- Claude suggested using a buffer with the deque function from the collectons library in order to use a moving window for data collection. This makes it less computationally intensive than storing all of the position, time, and current values and only taking the last 100. With this and a few other minor modifications, I was able to implement live power readings into the GUI and print them to the bottom section where the raw position data is displayed.
+
+Below is the code added for the FFT power analysis.
+
+```python
+def run_fft_power_analysis(self):
+    if len(self.fft_buffer) < 20:
+        return
+
+    times, positions, currents = zip(*self.fft_buffer)
+    # print(self.fft_buffer)
+    times = np.array(times)
+    positions = np.array(positions) / 100.0  # Convert cm to meters
+    currents = np.array(currents) / 1000.0   # Convert mA to A
+    # times -= times[0]  # Normalize time
+
+   if len(times) >= 100:
+        # Check time intervals
+        time_window = times[-100:]
+        time_intervals = np.diff(time_window)
+        min_interval = np.min(time_intervals)
+        max_interval = np.max(time_intervals)
+        avg_interval = np.mean(time_intervals)
+            
+        if min_interval < 0.001:  # Less than 1ms between samples is suspicious
+            self.report(f"Warning: Very small time interval detected: {min_interval:.6f}s")
+            return
+                
+       if max_interval / min_interval > 10:  # Suspicious time interval variation
+           self.report(f"Warning: Large time interval variation - min: {min_interval:.3f}s, max: {max_interval:.3f}s, avg: {avg_interval:.3f}s")
+           return  # Skip this FFT calculation to avoid potential spikes
+            
+      # Create evenly spaced time points for interpolation
+      desired_sample_rate = 50  # Hz
+      desired_interval = 1.0 / desired_sample_rate
+      t_uniform = np.linspace(time_window[0], time_window[-1], int((time_window[-1] - time_window[0]) / desired_interval))
+            
+      # Interpolate position data to uniform time points
+      from scipy.interpolate import interp1d
+      position_interp = interp1d(time_window, positions[-100:], kind='cubic', bounds_error=False)
+      positions_uniform = position_interp(t_uniform)
+            
+      # For current, use linear interpolation since it might be noisier
+      current_interp = interp1d(time_window, currents[-100:], kind='linear', bounds_error=False)
+      currents_uniform = current_interp(t_uniform)
+            
+      # Use interpolated data for calculations
+      mean_current = np.mean(currents_uniform)
+      norm_times = t_uniform - t_uniform[0]
+            
+      # Debug interpolation quality
+      if np.any(np.isnan(positions_uniform)):
+          self.report("Warning: Interpolation produced NaN values")
+          return
+                
+      # Apply Hanning window to reduce spectral leakage
+      window = np.hanning(len(positions_uniform))
+      positions_windowed = positions_uniform * window
+            
+      # Compensate for window amplitude reduction
+      window_correction = .4/.294 # Hann window reduces amplitude -- experimentally determined correction factor
+            
+      amplitudes, frequencies = extracter(positions_windowed, norm_times, k=1)
+      amplitudes = [amp * window_correction for amp in amplitudes]  # Apply correction
+
+      if not amplitudes or not frequencies:
+          self.report("FFT: No significant frequency detected.")
+         return
+
+      # Apply frequency stability check
+      if hasattr(self, 'last_freq') and self.last_freq is not None:
+          freq_change = abs(frequencies[0] - self.last_freq)
+         if freq_change > 1:  # More than 1 Hz change
+             self.report(f"Warning: Large frequency change: {freq_change:.2f} Hz")
+             return
+      self.last_freq = frequencies[0]
+
+      damping = 1.5 * mean_current**2
+      power = sum(0.5*damping*(amp**2)*(2*np.pi*f)**2 for amp, f in zip(amplitudes, frequencies))
+
+      # Store the absolute time for the power value
+      self.power_buffer.append((self.fft_buffer[-1][0], power))
+
+      self.report(f"Power: {power:.4f} W | Freq: {frequencies[0]:.2f} Hz | Amp: {amplitudes[0]:.4f} m | Damping: {damping} N/m/s")
+```
+
+Adding the FFT-enabling functions to the GUI was not too hard, but adding the power to the current plot was a little tricky. I decided to put the plot the power on the same graph as the current, so I had to twin the axes so that there was a dependent variable axis for power output in Watts. In the end most of the edits had to happen in the *update_live()* function in the plotter library that enables the GUI. Once I was able to pass the power values to the *update_live()* function, I was able to plot them but I noticed a couple issues.
+
+1. The power was spiking or reading crazy values when the position lagged slightly. It was tricking it into thinking the frequency went up really high or low when a lag meant that a bunch of position points were read all at once from the position sensor.
+2. The plot was not showing a line, only individual points were appearing.
+3. The plot was not shifting as time went on, instead the time axis was staying still. The GUI before automatically moved the time axis as new data came in.
+
+To fix issue number 1, I added filtering to make sure that power was only being calculated and passed to *update_live()* when the time gaps were consistent -- not too large or too small. This happens in *run_fft_power_analysis()*, the function in the above code. This has done a good job of preventing major spikes and abnormalities, but it does shut off the power reading at any lag. I tried adding a timestamp to the position data as it comes in, but this caused massive lagging and a couple weird errors I couldn't sort out. This method makes the GUI run faster and more smoothly but in an ideal world the incoming data could be timestamped to avoid this issue entirely. To fix issue numbers 2 and 3, I was out of my depth and asked Claude for help as well. Together, we came up with the following block of code which fixed both problems. Using power_x and power_vals to plot and ensuring *self.line_power.set_visible* was set to *(True)* fixed the line issue, and using the aligned power times fixed the issue with the time axis not moving.
+```python
+if hasattr(self, 'line_power') and self.line_power is not None:
+    # print("got here")
+    if len(power_times) > 0:
+        # Align power x-axis to match the current plot's time window
+        if len(t_raw) > 0:
+            t0 = t_raw[-1]
+            power_x = -(power_times - t0)
+            self.line_power.set_data(power_x, power_vals)
+            # print("Power times (aligned)", power_x)
+        else:
+            self.line_power.set_data(power_times, power_vals)
+        self.line_power.set_visible(True)
+        # print('set data to t and power_vals')
+
+        # Optionally, keep the power axis y-limits fixed or auto-adjust
+        adjust_ylim(self.ax_current_twin, power_vals)
+        # # Also, set the x-limits to match the current plot
+        # self.ax_current_twin.set_xlim(self.time_window, 0.0)
+    else:
+        self.line_power.set_data((0, 0), (np.nan,) * 2)
+        self.line_power.set_visible(False)
+        # print('cleared data')
+self.draw()
+```
+Once I had figured all that out, the GUI showed the position on the left plot, and the current and power on the right plot!
+
+<img src="https://github.com/lgray14/Ocean-wave-energy-device/blob/main/images/sinusoid.png" height="500"> 
+
+The very final step was to change the recording and saving data function to include the power. I did this by adding a column to the recording function, *toggle_recording*, for the power. Then, in the *save_data* function, I made sure the power is included and saved it with six decimal places. All of the other data save with two decimal places but since the power values are pretty low I wanted to make sure enough information about them were being saved. 
+
+
+## Final
+
+All of the relevant code I worked on this semester for the Arduino, python testing, and GUI are all housed in the 'code' folder of this GitHub. Wiring diagrams for all of the electronic components can be found online or on the linked informational webpages, and more information about the wave energy device and its design can be found in [Penelope Herrero-Marques' thesis](https://dspace.mit.edu/handle/1721.1/156654). 
+
+The next steps for this project are to enable it to generate electricity. Having the ability to vary the damping is useful because in most real-life scenarios, the power takeoff (PTO) device generating electricity would have a fixed damping coefficient. Being able to vary the damping ratio in experiments means we can simulate a range of different PTO devices and determine what damping coefficient maximizes our system. Knowing this, we can proceed to create a device that matches this damping ratio. Another possibility would be to develop a device that can vary it's own damping ratio. This could be advantageous because in different scenarios, different coefficients could be more favorable, so having the ability to vary damping coefficient could make a generator more efficient. 
+
+Two main options seem most reasonable for a PTO system. The first is a direct drive linear generator, where permanenent magnets would be installed on the moving element and pass through coils as the buoy bobbed. The relative motion would generate electricity in the coils. The cons of this approach are that there is inevitably some loss in the airgap, and the technology is not very advanced for a low velocity system like ours. It would likely be fabricated in house and be more expensive. However, there is no need for mechanical transformations with this approach, reducing mechanical losses in the electricity generated. The second option would be a combination of a linear to rotary conversion and a rotary generator. This would convert the linear motion of the bobbing device into a rotational motion, then use that rotational motion to drive a more traditional rotary generator. This option could be more cost effective and easier to build, but would have a lot of mechanical losses in the linear to rotary conversion. Since the system is small and produces a small amount of energy, this is less than ideal. Additionally, since the bobbing motion is pretty low velocity compared to, say, a piston in a traditional engine, it might be hard to find an effective way of converting the linear motion to rotational motion. Overall though, these would be two achievable options for achieving electricity generation with this system.
+
+Additionally, characterizing the peak power conditions is another step to be taken before moving on to electricity generation. As of the end of the summer, testing had begun on the device to examine the power output at different wave frequencies and damping ratios. Analysis remains to be done on this data, spearheaded by Rafael Tejeda.
